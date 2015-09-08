@@ -250,7 +250,7 @@ losetup $LOOP $RAWIMAGE
 PARTSTART=$(fdisk -l $LOOP | grep $LOOP | grep Linux | awk '{ print $2}')
 PARTSTART=$(($PARTSTART*512))
 sleep 1
-losetup -d $LOOP
+losetup -d $LOOP*
 sleep 1
 losetup -o $PARTSTART $LOOP $RAWIMAGE
 sleep 1
@@ -281,7 +281,7 @@ sleep 1
 tune2fs -O has_journal $LOOP >/dev/null 2>&1
 tune2fs -o journal_data_writeback $LOOP >/dev/null 2>&1
 sleep 1
-losetup -d $LOOP
+losetup -d $LOOP*
 
 # mount once again and create new partition
 sleep 2
@@ -295,7 +295,7 @@ TRUNCATE=$(fdisk -l $LOOP | tail -1 | awk '{ print $3}')
 TRUNCATE=$((($TRUNCATE+1)*512))
 
 truncate -s $TRUNCATE $RAWIMAGE >/dev/null 2>&1
-losetup -d $LOOP
+losetup -d $LOOP*
 }
 
 
@@ -339,7 +339,7 @@ sleep 2
 umount -l $DEST/cache/sdcard/boot > /dev/null 2>&1 || /bin/true
 umount -l $DEST/cache/sdcard/ 
 sleep 2
-losetup -d $LOOP
+losetup -d $LOOP*
 rm -rf $DEST/cache/sdcard/
 
 # write bootloader
@@ -359,7 +359,7 @@ fi
 rm -r /tmp/usr
 sync
 sleep 3
-losetup -d $LOOP
+losetup -d $LOOP*
 sync
 sleep 2
 mv $DEST/cache/tmprootfs.raw $DEST/cache/$VERSION.raw

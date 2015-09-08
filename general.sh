@@ -173,7 +173,7 @@ umount -l $DEST/cache/sdcard >/dev/null 2>&1
 IFS=" "
 x=$(losetup -a |awk '{ print $1 }' | rev | cut -c 2- | rev | tac);
 for x in $x; do
-	losetup -d $x 
+	losetup -d $x*
 done
 }
 
