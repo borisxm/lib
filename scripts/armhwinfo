@@ -8,6 +8,7 @@
 # Short-Description: Get some info about hardware for some ARM single board computers and set some basic things
 ### END INIT INFO
 
+SERVER_IP=$(ifconfig  | grep 'inet addr:'| grep -v '127.0.0.1' | cut -d: -f2 | awk '{ print $1}')
 CORES=$(grep -c ^processor /proc/cpuinfo)
 MEMTOTAL=$(awk 'BEGIN { printf "%.0f\n", '$(grep MemTotal /proc/meminfo | awk '{print $2}')'/1024/1024 }')
 ARCH=$(lscpu | grep Architecture  | awk '{print $2}')
@@ -21,12 +22,21 @@ SWITCH=$(dmesg | grep "BCM53125")
 INTERUPT=$(cat /proc/interrupts | grep "eth0")
 DISTROID=$(lsb_release -s -i)
 DISTROCODE=$(lsb_release -s -c)
-#KERNELID=$(uname -r)
+KERNELID=$(uname -r | cut -c 1-3)
+
 #KERNELDATE=$(uname -v |sed 's/.*EMPT //g' | awk '{print "date -d\""$1FS$2FS$3"\" +%e.%B.%Y"}' | bash)
 case "$1" in
     start)
 # ARM
 
+# fix for eth0 no brought up
+if [ "$SERVER_IP" == "" ]; then 
+echo -e "[\e[0;32m ok \x1B[0m] Fixing RTC and reloading eth0"
+date -s "2015-01-01 10:00:00" > /dev/null 2>&1 
+hwclock -w
+ifdown eth0 > /dev/null 2>&1 
+ifup eth0 > /dev/null 2>&1
+fi
 
 
 for i in $( lsblk -idn -o NAME ); do
@@ -44,7 +54,10 @@ done
 
 
 
-if [ "$ARCH" = "armv7l" ] && [ $CORES -gt "1" ]; then
+if [ "$ARCH" = "armv7l" ]; then
+    if [ $HARDWARE = "sun4i" ] || [ $HARDWARE = "Allwinner" ]; then
+		ID="Cubieboard"
+	fi
     if [ $HARDWARE = "sun7i" ] || [ $HARDWARE = "Allwinner" ]; then
         # redistribute irq to dedicated core
         if [ "$INTERUPT" != "" ]; then
@@ -55,13 +68,13 @@ if [ "$ARCH" = "armv7l" ] && [ $CORES -gt "1" ]; then
             ID="Cubietruck"
         elif [ -n "$GMAC" ]; then
             if [ "$TERMINUS" != "" ]; then
-                ID="Orange PI"
+                ID="Orange"
             elif [ "$SWITCH" != "" ]; then
                 ID="Lamobo R1"
             elif [ "$LEDS" != "" ]; then
                 ID="Lime 2"
             else
-                ID="Banana PI"
+                ID="Banana"
             fi
         elif [ "$LEDS" != "" ]; then
             ID="Lime"
@@ -83,23 +96,24 @@ if [ "$ARCH" = "armv7l" ] && [ $CORES -gt "1" ]; then
         else
             ID="HB i2"
         fi
+		[ -f /proc/asound/imxvt1613audio/id ] && ID="Udoo"
     fi
 fi
 
-# mainline kernel - read from machine info
-
-MACHINE=$(dmesg |grep "Machine model")
+[ -f /proc/device-tree/model ] && MACHINE=$(cat /proc/device-tree/model)
 
 if [[ $MACHINE == *LIME2 ]]; then ID="Lime 2"; fi
 if [[ $MACHINE == *LIME ]]; then ID="Lime"; fi
 if [[ $MACHINE == *Micro ]]; then ID="Micro"; fi
-if [[ $MACHINE == *Banana* ]]; then ID="Banana PI"; fi
+if [[ $MACHINE == *Banana* ]]; then ID="Banana"; fi
 if [[ $MACHINE == *Udoo* ]]; then ID="udoo"; fi
 if [[ $MACHINE == *Lamobo* ]]; then ID="Lamobo R1"; fi
-if [[ $MACHINE == *Orange* ]]; then ID="Orange PI"; fi
+if [[ $MACHINE == *Orange* ]]; then ID="Orange"; fi
 if [[ $MACHINE == *Neo* ]]; then ID="Udoo Neo"; fi
 if [[ $MACHINE == *Cubietruck* ]]; then ID="Cubietruck"; fi
 if [[ $MACHINE == *Cubieboard* ]]; then ID="Cubieboard"; fi
+
+if [[ $MACHINE == *M2* ]]; then ID=$ID" M2"; fi
 
 echo -e "[\e[0;32m ok \x1B[0m] Starting ARM hardware info: $ID"
 

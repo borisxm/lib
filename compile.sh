@@ -12,27 +12,23 @@
 
 # method
 KERNEL_ONLY="no"							# build only kernel
-SOURCE_COMPILE="yes"                       	# force source compilation: yes / no
-KERNEL_CONFIGURE="no"                       # want to change my default configuration
-KERNEL_CLEAN="yes"                         	# run MAKE clean before kernel compilation
-
+KERNEL_CONFIGURE="no"							# want to change my default configuration
+CLEAN_LEVEL=""								# 0 = make clean + del debs, 1 = only make clean, 2 = nothing
+								# 3 = choosing kernel if present 4 = del all output
 # user 
 AFTERINSTALL=""								# last command before closing image, example: apt-get install joe
-DEST_LANG="en_US.UTF-8"                     # sl_SI.UTF-8, en_US.UTF-8
+DEST_LANG="en_US.UTF-8"						# sl_SI.UTF-8, en_US.UTF-8
 CONSOLE_CHAR="UTF-8"
-TZDATA="Europe/Ljubljana"                   # Timezone
-ROOTPWD="1234"                              # Must be changed @first login
-MAINTAINER="Igor Pecovnik"                  # deb signature
-MAINTAINERMAIL="igor.pecovnik@****l.com"    # deb signature
-GPG_PASS=""									# signing password
+ROOTPWD="1234"								# Must be changed @first login
+MAINTAINER="Igor Pecovnik"						# deb signature
+MAINTAINERMAIL="igor.pecovnik@****l.com"				# deb signature
+GPG_PASS=""								# signing password
 
 # advanced
-KERNELTAG="v4.1.6"                          # which kernel version - valid only for mainline
-FBTFT="yes"                                 # https://github.com/notro/fbtft 
-EXTERNAL="yes"                              # compile extra drivers`
-FORCE_CHECKOUT="yes"						# igre manual changes to source
+FBTFT="yes"								# https://github.com/notro/fbtft 
+EXTERNAL="yes"								# compile extra drivers`
+FORCE_CHECKOUT="yes"							# igre manual changes to source
 BUILD_ALL="no"								# cycle through selected boards and make images
-
 #--------------------------------------------------------------------------------------------------------------------------------
 
 # source is where we start the script
@@ -66,12 +62,13 @@ fi
 #--------------------------------------------------------------------------------------------------------------------------------
 # Get updates of the main build libraries
 #--------------------------------------------------------------------------------------------------------------------------------
+apt-get -qq -y install git
 if [ -d "$SRC/lib" ]; then
     cd $SRC/lib
     git pull
 else
     # download SDK
-    git clone https://github.com/igorpecovnik/lib libclean
+    git clone --depth 1 https://github.com/igorpecovnik/lib
 fi
 
 

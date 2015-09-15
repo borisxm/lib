@@ -14,29 +14,32 @@ compile_uboot (){
 #--------------------------------------------------------------------------------------------------------------------------------
 # Compile uboot from sources
 #--------------------------------------------------------------------------------------------------------------------------------
-display_alert "Compiling universal boot loader" "@host" "info"
 
 if [ -d "$SOURCES/$BOOTSOURCE" ]; then
+	grab_u-boot_version
+	display_alert "Compiling uboot. Please wait." "$UBOOTVER" "info"
+	echo `date +"%d.%m.%Y %H:%M:%S"` $SOURCES/$BOOTSOURCE/$BOOTCONFIG >> $DEST/debug/install.log 
 	cd $SOURCES/$BOOTSOURCE
-		make -s ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- clean 
+	make -s ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- clean >/dev/null 2>&1
 	# there are two methods of compilation
 	if [[ $BOOTCONFIG == *config* ]]; then
-		make $CTHREADS $BOOTCONFIG CROSS_COMPILE=arm-linux-gnueabihf-
-		if [[ $BRANCH != "next" && $LINUXCONFIG == *sunxi* ]] ; then
+		make $CTHREADS $BOOTCONFIG CROSS_COMPILE=arm-linux-gnueabihf- >/dev/null 2>&1
+		[ -f .config ] && sed -i 's/CONFIG_LOCALVERSION=""/CONFIG_LOCALVERSION="-armbian"/g' .config
+		[ -f .config ] && sed -i 's/CONFIG_LOCALVERSION_AUTO=.*/# CONFIG_LOCALVERSION_AUTO is not set/g' .config
+		touch .scmversion
+		if [[ $BRANCH != "next" && $LINUXCONFIG == *sun* ]] ; then
 			## patch mainline uboot configuration to boot with old kernels
 			if [ "$(cat $SOURCES/$BOOTSOURCE/.config | grep CONFIG_ARMV7_BOOT_SEC_DEFAULT=y)" == "" ]; then
 				echo "CONFIG_ARMV7_BOOT_SEC_DEFAULT=y" >> $SOURCES/$BOOTSOURCE/.config
-				echo "CONFIG_ARMV7_BOOT_SEC_DEFAULT=y" >> $SOURCES/$BOOTSOURCE/spl/.config
 				echo "CONFIG_OLD_SUNXI_KERNEL_COMPAT=y" >> $SOURCES/$BOOTSOURCE/.config
-				echo "CONFIG_OLD_SUNXI_KERNEL_COMPAT=y"	>> $SOURCES/$BOOTSOURCE/spl/.config
 			fi
-		fi
-	make $CTHREADS CROSS_COMPILE=arm-linux-gnueabihf-
+		fi	
+	make $CTHREADS CROSS_COMPILE=arm-linux-gnueabihf- >> $DEST/debug/install.log 2>&1
 else
-	make $CTHREADS $BOOTCONFIG CROSS_COMPILE=arm-linux-gnueabihf- 
+	make $CTHREADS $BOOTCONFIG CROSS_COMPILE=arm-linux-gnueabihf- >> $DEST/debug/install.log 2>&1
 fi
 
-grab_u-boot_version
+
 
 
 # create .deb package
@@ -90,14 +93,17 @@ else
 fi
 
 cd $DEST/debs
-dpkg -b $CHOOSEN_UBOOT
+display_alert "Target directory" "$DEST/debs/" "info"
+display_alert "Building deb" "$CHOOSEN_UBOOT.deb" "info"
+dpkg -b $CHOOSEN_UBOOT >/dev/null 2>&1
 rm -rf $CHOOSEN_UBOOT
+CHOOSEN_UBOOT=$CHOOSEN_UBOOT".deb"
 #
 
-FILESIZE=$(wc -c $DEST/debs/$CHOOSEN_UBOOT'.deb' | cut -f 1 -d ' ')
+FILESIZE=$(wc -c $DEST/debs/$CHOOSEN_UBOOT | cut -f 1 -d ' ')
 if [ $FILESIZE -lt 50000 ]; then
 	display_alert "Building failed, check configuration." "$CHOOSEN_UBOOT deleted" "err"
-	rm $DEST/debs/$CHOOSEN_UBOOT".deb"
+	rm $DEST/debs/$CHOOSEN_UBOOT
 	exit
 fi
 else
@@ -111,8 +117,10 @@ compile_sunxi_tools (){
 # Compile sunxi_tools
 #--------------------------------------------------------------------------------------------------------------------------------
 display_alert "Compiling sunxi tools" "@host & target" "info"
-
+# temp addon
 cd $SOURCES/sunxi-tools
+git checkout -q -f master
+git checkout -q -f 6cc91f10625d080a92ae8118bc23f72cae8fc9a7
 # for host
 make -s clean >/dev/null 2>&1
 make -s fex2bin >/dev/null 2>&1
@@ -120,9 +128,10 @@ make -s bin2fex >/dev/null 2>&1
 cp fex2bin bin2fex /usr/local/bin/
 # for destination
 make -s clean >/dev/null 2>&1
-make $CTHREADS 'fex2bin' CC=arm-linux-gnueabihf-gcc >/dev/null 2>&1
-make $CTHREADS 'bin2fex' CC=arm-linux-gnueabihf-gcc >/dev/null 2>&1
-make $CTHREADS 'nand-part' CC=arm-linux-gnueabihf-gcc >/dev/null 2>&1
+make $CTHREADS 'fex2bin' CC=arm-linux-gnueabi-gcc >/dev/null 2>&1
+make $CTHREADS 'bin2fex' CC=arm-linux-gnueabi-gcc >/dev/null 2>&1
+make $CTHREADS 'nand-part' CC=arm-linux-gnueabi-gcc >/dev/null 2>&1
+git checkout -q -f master
 }
 
 
@@ -137,7 +146,7 @@ if [ -d "$SOURCES/$LINUXSOURCE" ]; then
 
 cd $SOURCES/$LINUXSOURCE
 # delete previous creations
-if [ "$KERNEL_CLEAN" = "yes" ]; then make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- clean ; fi
+if [ "$KERNEL_CLEAN" = "yes" ]; then make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- clean | dialog --backtitle "$backtitle" --progressbox "Cleaning kernel source ..." 20 70; fi
 
 # adding custom firmware to kernel source
 if [[ -n "$FIRMWARE" ]]; then unzip -o $SRC/lib/$FIRMWARE -d $SOURCES/$LINUXSOURCE/firmware; fi
@@ -153,10 +162,20 @@ fi
 # hack for deb builder. To pack what's missing in headers pack.
 cp $SRC/lib/patch/misc/headers-debian-byteshift.patch /tmp
 
-if [ "$KERNEL_CONFIGURE" = "yes" ]; then make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig ; fi
+if [ "$KERNEL_CONFIGURE" = "yes" ]; then make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig; fi
+
+export LOCALVERSION="-"$LINUXFAMILY 
 
 # this way of compilation is much faster. We can use multi threading here but not later
-make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- all zImage
+make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- oldconfig
+make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- all zImage | dialog --backtitle "$backtitle" --progressbox "Compiling kernel ..." 20 70
+
+if [ $? -ne 0 ] || [ ! -f arch/arm/boot/zImage ]; then
+		display_alert "Kernel was not built" "@host" "err"
+	    exit 1
+fi
+
+
 # make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- 
 # produce deb packages: image, headers, firmware, libc
 make -j1 deb-pkg KDEB_PKGVERSION=$REVISION LOCALVERSION="-"$LINUXFAMILY KBUILD_DEBARCH=armhf ARCH=arm DEBFULLNAME="$MAINTAINER" \
@@ -171,7 +190,7 @@ fi
 # we need a name
 CHOOSEN_KERNEL=linux-image"$KERNEL_BRACH"-"$CONFIG_LOCALVERSION$LINUXFAMILY"_"$REVISION"_armhf.deb
 cd ..
-mv *.deb $DEST/debs/
+mv *.deb $DEST/debs/ || exit
 else
 display_alert "Source file $1 does not exists. Check fetch_from_github configuration." "" "err"
 exit
@@ -193,7 +212,7 @@ rm usb-redirector-linux-arm-eabi.tar.gz
 cd $SOURCES/usb-redirector-linux-arm-eabi/files/modules/src/tusbd
 # patch to work with newer kernels
 sed -e "s/f_dentry/f_path.dentry/g" -i usbdcdev.c
-make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- KERNELDIR=$SOURCES/$LINUXSOURCE/
+make -j1 ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- KERNELDIR=$SOURCES/$LINUXSOURCE/ >> $DEST/debug/install.log
 # configure USB redirector
 sed -e 's/%INSTALLDIR_TAG%/\/usr\/local/g' $SOURCES/usb-redirector-linux-arm-eabi/files/rc.usbsrvd > $SOURCES/usb-redirector-linux-arm-eabi/files/rc.usbsrvd1
 sed -e 's/%PIDFILE_TAG%/\/var\/run\/usbsrvd.pid/g' $SOURCES/usb-redirector-linux-arm-eabi/files/rc.usbsrvd1 > $SOURCES/usb-redirector-linux-arm-eabi/files/rc.usbsrvd
@@ -215,26 +234,21 @@ if [[ -n "$MISC3_DIR" ]]; then
 	cd $SOURCES/$MISC3_DIR
 	#git checkout 0ea77e747df7d7e47e02638a2ee82ad3d1563199
 	make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- clean >/dev/null 2>&1
-	make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- KSRC=$SOURCES/$LINUXSOURCE/
+	(make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- KSRC=$SOURCES/$LINUXSOURCE/ >/dev/null 2>&1)
 	cp *.ko $DEST/cache/sdcard/usr/local/bin
 	#cp blacklist*.conf $DEST/cache/sdcard/etc/modprobe.d/
 fi
 
 # MISC4 = NOTRO DRIVERS / special handling
 # MISC5 = sunxu display control
-
-if [[ -n "$MISC5_DIR" && $BRANCH != "next" && $LINUXSOURCE == *sunxi*  ]]; then
+if [[ -n "$MISC5_DIR" && $BRANCH != "next" && $LINUXSOURCE == *sunxi* ]]; then
 	cd $SOURCES/$MISC5_DIR
 	cp $SOURCES/$LINUXSOURCE/include/video/sunxi_disp_ioctl.h .
 	make clean >/dev/null 2>&1
-	make ARCH=arm CC=arm-linux-gnueabihf-gcc KSRC=$SOURCES/$LINUXSOURCE/ >/dev/null 2>&1
+	(make ARCH=arm CC=arm-linux-gnueabihf-gcc KSRC=$SOURCES/$LINUXSOURCE/ >/dev/null 2>&1)
 	install -m 755 a10disp $DEST/cache/sdcard/usr/local/bin
 fi
-
 }
-
-
-
 
 
 shrinking_raw_image (){
@@ -242,60 +256,44 @@ shrinking_raw_image (){
 # Shrink partition and image to real size with 10% space
 #--------------------------------------------------------------------------------------------------------------------------------
 RAWIMAGE=$1
-display_alert "Shrink partition and image to real size" "$2 % free space" "info"
+display_alert "Shrink image last partition to" "minimum" "info"
 # partition prepare
-
 LOOP=$(losetup -f)
 losetup $LOOP $RAWIMAGE
-PARTSTART=$(fdisk -l $LOOP | grep $LOOP | grep Linux | awk '{ print $2}')
+#PARTSTART=$(fdisk -l $LOOP | grep $LOOP | grep Linux | awk '{ print $2}')
+PARTSTART=$(parted /dev/loop0 unit s print -sm | tail -1 | cut -d: -f2 | sed 's/s//')
 PARTSTART=$(($PARTSTART*512))
-sleep 1
-losetup -d $LOOP*
-sleep 1
-losetup -o $PARTSTART $LOOP $RAWIMAGE
-sleep 1
-fsck -n $LOOP >/dev/null 2>&1
-sleep 1
-tune2fs -O ^has_journal $LOOP >/dev/null 2>&1
-sleep 1
-e2fsck -fy $LOOP >/dev/null 2>&1
-SIZE=$(LANGUAGE=english tune2fs -l $LOOP | grep "Block count" | awk '{ print $NF}')
-FREE=$(LANGUAGE=english tune2fs -l $LOOP | grep "Free blocks" | awk '{ print $NF}')
-UNITSIZE=$(LANGUAGE=english tune2fs -l $LOOP | grep "Block size" | awk '{ print $NF}')
-
-# some system reports this in kilobytes and resize fails
-if [[ "$UNITSIZE" == *k* ]]; then
-UNITSIZE="${UNITSIZE//k/}"
-UNITSIZE=$(($UNITSIZE*1024))
-fi
-
-# calculate new partition size and add 15% reserve
-NEWSIZE=$((($SIZE-$FREE)*$UNITSIZE/1024/1024))
-NEWSIZE=$(echo "scale=2; $NEWSIZE * (1+($2/100))" | bc -l | sed 's/...$//')
-NEWSIZE=${NEWSIZE%.*}
-
-# resize partition to new size
-BLOCKSIZE=$(LANGUAGE=english resize2fs $LOOP $NEWSIZE"M" | grep "The filesystem on" | awk '{ print $(NF-2)}')
-NEWSIZE=$(($BLOCKSIZE*$UNITSIZE/1024))
-sleep 1
+sleep 1; losetup -d $LOOP
+# convert from EXT4 to EXT2
+sleep 1; losetup -o $PARTSTART $LOOP $RAWIMAGE
+sleep 1; fsck -n $LOOP >/dev/null 2>&1
+sleep 1; tune2fs -O ^has_journal $LOOP >/dev/null 2>&1
+sleep 1; e2fsck -fy $LOOP >/dev/null 2>&1
+resize2fs $LOOP -M >/dev/null 2>&1
+BLOCKSIZE=$(LANGUAGE=english tune2fs -l $LOOP | grep "Block count" | awk '{ print $(NF)}')
+RESERVEDBLOCKSIZE=$(LANGUAGE=english tune2fs -l $LOOP | grep "Reserved block count" | awk '{ print $(NF)}')
+BLOCKSIZE=$(($BLOCKSIZE+$RESERVEDBLOCKSIZE))
+resize2fs $LOOP $BLOCKSIZE >/dev/null 2>&1
 tune2fs -O has_journal $LOOP >/dev/null 2>&1
 tune2fs -o journal_data_writeback $LOOP >/dev/null 2>&1
-sleep 1
-losetup -d $LOOP*
+losetup -d $LOOP
 
 # mount once again and create new partition
-sleep 2
-losetup $LOOP $RAWIMAGE
-PARTITIONS=$(($(fdisk -l $LOOP | grep $LOOP | wc -l)-1))
-((echo d; echo $PARTITIONS; echo n; echo p; echo ; echo ; echo "+"$NEWSIZE"K"; echo w;) | fdisk $LOOP)>/dev/null
-sleep 2
+sleep 1; losetup $LOOP $RAWIMAGE
+#PARTITIONS=$(($(fdisk -l $LOOP | grep $LOOP | wc -l)-1))
+PARTITIONS=$(parted -m $LOOP 'print' | tail -1 | awk -F':' '{ print $1 }')
+
+#((echo d; echo $PARTITIONS; echo n; echo p; echo ; echo ; echo "+"$NEWSIZE"K"; echo w;) | fdisk $LOOP)>/dev/null
+parted $LOOP rm $PARTITIONS >/dev/null 2>&1
+NEWSIZE=$(($BLOCKSIZE*4700/1024)) # overhead hardcoded to number
+((echo n; echo p; echo ; echo ; echo "+"$NEWSIZE"K"; echo w;) | fdisk $LOOP)>/dev/null
+sleep 1
 
 # truncate the image
-TRUNCATE=$(fdisk -l $LOOP | tail -1 | awk '{ print $3}')
+TRUNCATE=$(parted -m $LOOP 'unit s print' | tail -1 | awk -F':' '{ print $3 }' | sed 's/.$//')
 TRUNCATE=$((($TRUNCATE+1)*512))
-
 truncate -s $TRUNCATE $RAWIMAGE >/dev/null 2>&1
-losetup -d $LOOP*
+losetup -d $LOOP
 }
 
 
@@ -313,7 +311,7 @@ umount -l $DEST/cache/sdcard/dev/pts
 umount -l $DEST/cache/sdcard/dev
 umount -l $DEST/cache/sdcard/proc
 umount -l $DEST/cache/sdcard/sys
-umount -l $DEST/cache/sdcard/tmp
+umount -l $DEST/cache/sdcard/tmp >/dev/null 2>&1
 
 # let's create nice file name
 VER="${VER/-$LINUXFAMILY/}"
@@ -346,15 +344,20 @@ rm -rf $DEST/cache/sdcard/
 LOOP=$(losetup -f)
 display_alert "Writing boot loader" "$LOOP" "info"
 losetup $LOOP $DEST/cache/tmprootfs.raw
-dpkg -x $DEST"/debs/"$CHOOSEN_UBOOT".deb" /tmp/
+dpkg -x $DEST"/debs/"$CHOOSEN_UBOOT /tmp/
+CHOOSEN_UBOOT="${CHOOSEN_UBOOT//.deb/}"
 
 if [[ $BOARD == *cubox* ]] ; then 
-	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/SPL of=$LOOP bs=512 seek=2 status=noxfer ) 
-	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/u-boot.img of=$LOOP bs=1K seek=42 status=noxfer ) 	
+	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/SPL of=$LOOP bs=512 seek=2 status=noxfer >/dev/null 2>&1) 
+	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/u-boot.img of=$LOOP bs=1K seek=42 status=noxfer >/dev/null 2>&1) 	
 elif [[ $BOARD == *udoo* ]] ; then 
-	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/u-boot.imx of=$LOOP bs=1024 seek=1 conv=fsync ) 
+	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/u-boot.imx of=$LOOP bs=1024 seek=1 conv=fsync >/dev/null 2>&1) 
 else 
-	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/u-boot-sunxi-with-spl.bin of=$LOOP bs=1024 seek=8 status=noxfer ) 	
+	( dd if=/tmp/usr/lib/"$CHOOSEN_UBOOT"/u-boot-sunxi-with-spl.bin of=$LOOP bs=1024 seek=8 status=noxfer >/dev/null 2>&1) 	
+fi
+if [ $? -ne 0 ]; then
+		display_alert "U-boot failed to install" "@host" "err"
+	    exit 1
 fi
 rm -r /tmp/usr
 sync
@@ -376,9 +379,9 @@ if [[ $GPG_PASS != "" ]] ; then
 	echo $GPG_PASS | gpg --passphrase-fd 0 --armor --detach-sign --batch --yes imagewriter.exe
 	echo $GPG_PASS | gpg --passphrase-fd 0 --armor --detach-sign --batch --yes armbian.txt
 fi
-echo -e "[\e[0;32m ok \x1B[0m] Create and sign download ready ZIP archive"
+display_alert "Create and sign" "$VERSION.zip" "info"
 mkdir -p $DEST/images
-zip -FS $DEST/images/$VERSION.zip $VERSION.raw* armbian.txt imagewriter.*
-display_alert "Uploading to server" "$VERSION.zip" "info"
+zip -FSq $DEST/images/$VERSION.zip $VERSION.raw* armbian.txt imagewriter.*
+#display_alert "Uploading to server" "$VERSION.zip" "info"
 rm -f $VERSION.raw *.asc imagewriter.* armbian.txt
 }

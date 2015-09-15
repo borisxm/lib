@@ -22,16 +22,41 @@ fi
 
 
 # We'll use this tittle on all menus
-backtitle="Armbian building script, http://www.armbian.com | Author: Igor Pecovnik, www.igorpecovnik.com"
- 
+backtitle="Armbian building script, http://www.armbian.com | Author: Igor Pecovnik"
+mkdir -p $DEST/debug
+
+# Install some basic support if not here yet
+if [ $(dpkg-query -W -f='${Status}' whiptail 2>/dev/null | grep -c "ok installed") -eq 0 ]; then
+apt-get install -qq -y whiptail bc >/dev/null 2>&1
+fi 
+
+if [ $(dpkg-query -W -f='${Status}' bc 2>/dev/null | grep -c "ok installed") -eq 0 ]; then
+apt-get install -qq -y bc >/dev/null 2>&1
+fi 
+
+if [ $(dpkg-query -W -f='${Status}' dialog 2>/dev/null | grep -c "ok installed") -eq 0 ]; then
+apt-get install -qq -y dialog >/dev/null 2>&1
+fi 
+
+# if language not set, set to english
+[ "$LANGUAGE" == "" ] && export LANGUAGE=en_US:en
+
+#--------------------------------------------------------------------------------------------------------------------------------
+# Download packages for host and install only if missing - Ubuntu 14.04 recommended                     
+#--------------------------------------------------------------------------------------------------------------------------------
+if [ ! -f "/etc/apt/sources.list.d/aptly.list" ]; then
+echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list
+apt-key adv --keyserver keys.gnupg.net --recv-keys E083A3782A194991
+apt-get update
+fi
 
 #--------------------------------------------------------------------------------------------------------------------------------
 # Choose destination - creating board list from file configuration.sh
 #--------------------------------------------------------------------------------------------------------------------------------
 if [ "$BOARD" == "" ]; then
 	IFS=";"
-	MYARRAY=($(cat $SRC/lib/configuration.sh | awk '/)#enabled/ || /#des/' | sed 's/)#enabled//g' | sed 's/#description //g' | sed ':a;N;$!ba;s/\n/;/g'))
-	MYPARAMS=( --title "Choose a board" --backtitle $backtitle --menu "\n Currently supported:" 28 62 18 )
+	MYARRAY=($(cat $SRC/lib/configuration.sh | awk '/\)#enabled/ || /#des/' | sed 's/)#enabled//g' | sed 's/#description //g' | sed ':a;N;$!ba;s/\n/;/g'))
+	MYPARAMS=( --title "Choose a board" --backtitle $backtitle --menu "\n Supported:" 28 62 18 )
 	i=0
 	j=1
 	while [[ $i -lt ${#MYARRAY[@]} ]]
@@ -105,9 +130,10 @@ fi
 #--------------------------------------------------------------------------------------------------------------------------------
 if [ "$BRANCH" == "" ]; then
 	IFS=";"
-	declare -a MYARRAY=('default' '3.4.x - 3.14.x most supported' 'next' '4.x Vanilla from www.kernel.org');
+	declare -a MYARRAY=('default' '3.4.x - 3.14.x most supported' 'next' 'Vanilla / mainline latest stable');
 	# Exceptions
 	if [[ $BOARD == "cubox-i" || $BOARD == "udoo-neo" ]]; then declare -a MYARRAY=('default' '3.4.x - 3.14.x most supported'); fi
+	if [[ $BOARD == "cubieboard4" || $BOARD == "bananapim2" ]]; then declare -a MYARRAY=('next' 'Latest stable from www.kernel.org'); fi
 	MYPARAMS=( --title "Choose a branch" --backtitle $backtitle --menu "\n Kernel:" 11 60 2 )
 	i=0
 	j=1
@@ -163,25 +189,23 @@ source $SRC/lib/boards.sh 					# Board specific install
 source $SRC/lib/desktop.sh 					# Desktop specific install
 source $SRC/lib/common.sh 					# Functions 
 
-if [ "$SOURCE_COMPILE" != "yes" ]; then
-	choosing_kernel
-	if [ "$CHOOSEN_KERNEL" == "" ]; then echo "ERROR: You have to choose one kernel"; exit; fi
-fi
 
 # needed if process failed in the middle
-#umount_image
+umount_image
 
 #--------------------------------------------------------------------------------------------------------------------------------
 # The name of the job
 #--------------------------------------------------------------------------------------------------------------------------------
 VERSION="Armbian $REVISION ${BOARD^} $DISTRIBUTION $RELEASE $BRANCH"
- 
+echo `date +"%d.%m.%Y %H:%M:%S"` $VERSION > $DEST/debug/install.log 
+
+
 #--------------------------------------------------------------------------------------------------------------------------------
 # let's start with fresh screen
 #--------------------------------------------------------------------------------------------------------------------------------
 clear
-
 display_alert "Dependencies check" "@host" "info"
+
 
 #--------------------------------------------------------------------------------------------------------------------------------
 # optimize build time with 100% CPU usage
@@ -203,6 +227,21 @@ if [ "$KERNEL_ONLY" == "yes" ]; then
 		display_alert "Building" "$VERSION" "info"
 fi
 
+
+#--------------------------------------------------------------------------------------------------------------------------------
+# download packages for host
+#--------------------------------------------------------------------------------------------------------------------------------
+PAKETKI="aptly device-tree-compiler pv bc lzop zip binfmt-support bison build-essential ccache debootstrap flex gawk \
+gcc-arm-linux-gnueabihf lvm2 qemu-user-static u-boot-tools uuid-dev zlib1g-dev unzip libusb-1.0-0-dev parted pkg-config \
+expect gcc-arm-linux-gnueabi libncurses5-dev whiptail debian-keyring debian-archive-keyring ntpdate"
+if [ "$(LANGUAGE=english apt-get -s install $PAKETKI | grep "0 newly installed")" == "" ]; then
+	install_packet "$PAKETKI" "Checking and installing host dependencies" "host"
+fi
+
+
+#--------------------------------------------------------------------------------------------------------------------------------
+# sync clock
+#--------------------------------------------------------------------------------------------------------------------------------
 if [ "$SYNC_CLOCK" != "no" ]; then
 	display_alert "Synching clock" "host" "info"
 	ntpdate -s time.ijs.si
@@ -211,21 +250,11 @@ start=`date +%s`
 
 
 #--------------------------------------------------------------------------------------------------------------------------------
-# download packages for host
-#--------------------------------------------------------------------------------------------------------------------------------
-download_host_packages
-
-
-#--------------------------------------------------------------------------------------------------------------------------------
 # fetch_from_github [repository, sub directory]
 #--------------------------------------------------------------------------------------------------------------------------------
 mkdir -p $DEST -p $SOURCES
 
-if [ "$FORCE_CHECKOUT" = "yes" ]; then
-	FORCE="-f"
-	else
-	FORCE=""
-fi
+if [ "$FORCE_CHECKOUT" = "yes" ]; then FORCE="-f"; else FORCE=""; fi
 display_alert "source downloading" "@host" "info"
 
 fetch_from_github "$BOOTLOADER" "$BOOTSOURCE" "$BOOTDEFAULT"
@@ -237,64 +266,35 @@ if [[ -n "$MISC4" ]]; then fetch_from_github "$MISC4" "$MISC4_DIR" "master"; fi
 if [[ -n "$MISC5" ]]; then fetch_from_github "$MISC5" "$MISC5_DIR"; fi
 
 # compile sunxi tools
-if [[ $LINUXCONFIG == *sunxi* ]]; then 
+if [[ $LINUXCONFIG == *sun* ]]; then 
 compile_sunxi_tools
 fi
 
 # clean open things if scripts stops in the middle
 umount_image
 
-# Patching sources
+# cleaning level 0,1,2,3
+cleaning "$CLEAN_LEVEL"
+
+# patching sources
 patching_sources
 
-
-# Compile kernel only if not exits in cache. kernel clean override
-if [[ $BRANCH == "next" ]] ; then KERNEL_BRACH="-next"; UBOOT_BRACH="-next"; else KERNEL_BRACH=""; UBOOT_BRACH=""; fi 
-
-CHOOSEN_UBOOT="linux-u-boot"$UBOOT_BRACH"-"$BOARD"_"$REVISION"_armhf"
-
-if [[ $KERNEL_CLEAN == "no" ]] ; then
-	# check if proper kernel deb exists
-	TMP=linux-image"$KERNEL_BRACH"-"$CONFIG_LOCALVERSION$LINUXFAMILY"_"$REVISION"_armhf.deb
-	if [ -f "$DEST/debs/$TMP" ]; then
-		CHOOSEN_KERNEL=$TMP
-		#echo $TMP
-		SOURCE_COMPILE="no"
-	fi
-	# check if proper u-boot deb exists
-	if [ ! -f "$DEST/debs/$CHOOSEN_UBOOT"".deb" ]; then
-		compile_uboot
-	fi
-	
-fi
-
-
-
 #--------------------------------------------------------------------------------------------------------------------------------
-# Compile source or choose already packed kernel
+# Compile source if packed not exits
 #--------------------------------------------------------------------------------------------------------------------------------
-if [ "$SOURCE_COMPILE" = "yes" ]; then
+[ ! -f "$DEST/debs/$CHOOSEN_UBOOT" ] && compile_uboot
+[ ! -f "$DEST/debs/$CHOOSEN_KERNEL" ] && compile_kernel
 
-	# Compile boot loader
-	compile_uboot
 
-	# compile kernel and create archives
-	compile_kernel
-	if [ "$KERNEL_ONLY" == "yes" ]; then
+if [ "$KERNEL_ONLY" == "yes" ]; then
 		display_alert "Kernel building done" "@host" "info"
 		display_alert "Target directory" "$DEST/debs/" "info"
-		display_alert "File name: $CHOOSEN_KERNEL" "$VER" "info"
-	fi
-	
-fi
-
-if [ "$KERNEL_ONLY" != "yes" ]; then
-
+		display_alert "File name" "$CHOOSEN_KERNEL" "info"
+else
 #--------------------------------------------------------------------------------------------------------------------------------
 # create or use prepared root file-system
 #--------------------------------------------------------------------------------------------------------------------------------
 custom_debootstrap
-
 
 #--------------------------------------------------------------------------------------------------------------------------------
 # add kernel to the image
@@ -335,4 +335,5 @@ fi
 
 end=`date +%s`
 runtime=$(((end-start)/60))
-echo -e "[\e[0;32m ok \x1B[0m] Runtime $runtime min"
+umount $SOURCES/$LINUXSOURCE/drivers/video/fbtft >/dev/null 2>&1
+display_alert "Runtime" "$runtime min" "info"

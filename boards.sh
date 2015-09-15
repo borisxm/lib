@@ -20,13 +20,15 @@ display_alert "Install board specific applications." "$BOARD" "info"
 fingerprint_image "$DEST/debs/$RELEASE/$CHOOSEN_ROOTFS/etc/armbian.txt"
 
 # Allwinner
-if [[ $LINUXCONFIG == *sunxi* ]] ; then
+if [[ $LINUXCONFIG == *sun* ]] ; then
 
 	# add sunxi tools
 	cp $SOURCES/sunxi-tools/fex2bin $SOURCES/sunxi-tools/bin2fex $SOURCES/sunxi-tools/nand-part $DEST/debs/$RELEASE/$CHOOSEN_ROOTFS/usr/local/bin
 
-	# add soc temperature app
-	arm-linux-gnueabihf-gcc $SRC/lib/scripts/sunxi-temp/sunxi_tp_temp.c -o $DEST/debs/$RELEASE/$CHOOSEN_ROOTFS/usr/local/bin/sunxi_tp_temp
+	if [ "$BRANCH" != "next" ]; then
+		# add soc temperature app
+		arm-linux-gnueabihf-gcc $SRC/lib/scripts/sunxi-temp/sunxi_tp_temp.c -o $DEST/debs/$RELEASE/$CHOOSEN_ROOTFS/usr/local/bin/sunxi_tp_temp
+	fi
 	
 	# lamobo R1 router switch config
 	tar xfz $SRC/lib/bin/swconfig.tgz -C $DEST/debs/$RELEASE/$CHOOSEN_ROOTFS/usr/local/bin
@@ -65,7 +67,7 @@ if [[ $BOARD == "udoo" ]] ; then
 			sed -e "s/ttyS0/ttymxc1/g" -i $DEST/cache/sdcard/etc/init/ttymxc1.conf; 
 		fi
 		if [ -f $DEST/cache/sdcard/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service ]; then mv $DEST/cache/sdcard/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service  $DEST/cache/sdcard/etc/systemd/system/getty.target.wants/serial-getty@ttymxc1.service ; fi
-		chroot $DEST/cache/sdcard /bin/bash -c "apt-get -y -qq remove lirc && apt-get -y -qq autoremove"		
+		chroot $DEST/cache/sdcard /bin/bash -c "apt-get -y -qq remove lirc >/dev/null 2>&1 && apt-get -y -qq autoremove >/dev/null 2>&1"		
 		sed 's/wlan0/wlan2/' -i $DEST/cache/sdcard/etc/network/interfaces.default
 		sed 's/wlan0/wlan2/' -i $DEST/cache/sdcard/etc/network/interfaces.bonding
 		sed 's/wlan0/wlan2/' -i $DEST/cache/sdcard/etc/network/interfaces.hostapd
@@ -84,6 +86,9 @@ if [[ $BOARD == "udoo-neo" ]] ; then
 		sed 's/wlan0/wlan2/' -i $DEST/cache/sdcard/etc/network/interfaces.hostapd
 		# SD card is elsewhere
 		sed 's/mmcblk0p1/mmcblk1p1/' -i $DEST/cache/sdcard/etc/fstab
+		# firmware for M4
+		mkdir -p $DEST/cache/sdcard/boot/bin/
+		cp $SRC/lib/bin/m4startup.fw* $DEST/cache/sdcard/boot/bin/
 fi
 
 # cubox / hummingboard
@@ -118,11 +123,8 @@ chroot $DEST/cache/sdcard /bin/bash -c "update-rc.d firstrun defaults >/dev/null
 display_alert "Creating boot scripts" "$BOARD" "info"
 # remove .old on new image
 rm -rf $DEST/cache/sdcard/boot/dtb.old
-if [[ $BOARD == "udoo" ]] ; then
-	cp $SRC/lib/config/boot-udoo-next.cmd $DEST/cache/sdcard/boot/boot.cmd
-elif [[ $BOARD == "udoo-neo" ]]; then
-	cp $SRC/lib/config/boot-udoo-neo.cmd $DEST/cache/sdcard/boot/boot.cmd
-	#chroot $DEST/cache/sdcard /bin/bash -c "ln -s /boot/boot.scr /boot.scr"	
+if [[ $BOARD == udoo* ]] ; then
+	cp $SRC/lib/config/boot-$BOARD.cmd $DEST/cache/sdcard/boot/boot.cmd
 elif [[ $BOARD == cubox-i* ]]; then
 	cp $SRC/lib/config/boot-cubox.cmd $DEST/cache/sdcard/boot/boot.cmd
 else
@@ -220,8 +222,8 @@ fi
 cd $DEST/cache/sdcard/usr/src/$HEADERS_DIR
 
 if [ ! -f $DEST/cache/building/$HEADERS_CACHE.tgz ]; then
-	display_alert "Compile kernel headers scripts" "$VER" "info"
-	chroot $DEST/cache/sdcard /bin/bash -c "cd /usr/src/$HEADERS_DIR && make headers_check; make headers_install ; make scripts"
+	#display_alert "Compile kernel headers scripts" "$VER" "info"
+	chroot $DEST/cache/sdcard /bin/bash -c "cd /usr/src/$HEADERS_DIR && make headers_check; make headers_install ; make scripts" | dialog --progressbox "Compile kernel headers scripts ..." 20 70
 	rm -rf $DEST/cache/building/repack
 	mkdir -p $DEST/cache/building -p $DEST/cache/building/repack/usr/src/$HEADERS_DIR -p $DEST/cache/building/repack/DEBIAN
 	dpkg-deb -x $DEST/debs/$HEADERS_TMP $DEST/cache/building/repack

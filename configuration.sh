@@ -10,46 +10,65 @@
 #
 
 
-#--------------------------------------------------------------------------------------------------------------------------------
-# common for default allwinner kernel-source
-#--------------------------------------------------------------------------------------------------------------------------------
-
+# vaid options for automatic building
+#
 # build 0 = don't build
 # build 1 = old kernel
 # build 2 = next kernel
 # build 3 = both kernels
 
 
-SDSIZE="4000" # SD image size in MB
-UBOOTTAG="v2015.07"
-USEALLCORES="yes"                           # Use all CPU cores for compiling
-BOOTLOADER="git://git.denx.de/u-boot.git"
-BOOTSOURCE="u-boot"
-LINUXKERNEL="https://github.com/dan-and/linux-sunxi"
-LINUXSOURCE="linux-sunxi"
-LINUXCONFIG="linux-sunxi"
-LINUXFAMILY="sunxi"
-CPUMIN="480000"
-CPUMAX="1010000"
-OFFSET="1" # MB (1 x 2048 = default)
-BOOTSIZE="0" # Mb size of boot partition
-BOOTDEFAULT="master" # default branch that git checkout works properly
-LINUXDEFAULT="HEAD" # default branch that git checkout works properly
-FIRMWARE="bin/ap6210.zip"
-MISC1="https://github.com/linux-sunxi/sunxi-tools.git"		
-MISC1_DIR="sunxi-tools"
-MISC2=""	
-MISC2_DIR=""						
-MISC3="https://github.com/dz0ny/rt8192cu"	
-MISC3_DIR="rt8192cu"
-MISC4="https://github.com/notro/fbtft"
-MISC4_DIR="fbtft-drivers"
-MISC5="https://github.com/hglm/a10disp/"
-MISC5_DIR="sunxi-display-changer"
+#--------------------------------------------------------------------------------------------------------------------------------
+# common options
+#--------------------------------------------------------------------------------------------------------------------------------
+
+REVISION="4.6" 											# all boards have same revision
+SDSIZE="4000" 											# SD image size in MB
+TZDATA=`cat /etc/timezone`								# Timezone for target is taken from host or defined here.
+USEALLCORES="yes"                           			# Use all CPU cores for compiling
+SYSTEMD="yes"											# Enable or disable systemd on Jessie. 
+OFFSET="1" 												# Bootloader space in MB (1 x 2048 = default)
+BOOTSIZE="0" 											# Mb size of boot partition
+UBOOTTAG="v2015.10"										# U-boot TAG
+BOOTLOADER="git://git.denx.de/u-boot.git"				# mainline u-boot sources
+BOOTSOURCE="u-boot"										# mainline u-boot local directory
+BOOTDEFAULT="master" 									# default branch that git checkout works properly
+LINUXDEFAULT="HEAD" 									# default branch that git checkout works properly
+MISC1="https://github.com/linux-sunxi/sunxi-tools.git"	# Allwinner fex compiler / decompiler	
+MISC1_DIR="sunxi-tools"									# local directory
+MISC2=""												# Reserved
+MISC2_DIR=""											# local directory
+MISC3="https://github.com/dz0ny/rt8192cu --depth 1"		# Realtek drivers
+MISC3_DIR="rt8192cu"									# local directory
+MISC4="https://github.com/notro/fbtft"					# Small TFT display driver
+MISC4_DIR="fbtft-drivers"								# local directory
+MISC5="https://github.com/hglm/a10disp/ --depth 1"		# Display changer for Allwinner
+MISC5_DIR="sunxi-display-changer"						# local directory
 
 #--------------------------------------------------------------------------------------------------------------------------------
-# common for default allwinner kernel-source 
+# If KERNELTAG is not defined, let's compile latest stable. Vanilla kernel only
 #--------------------------------------------------------------------------------------------------------------------------------
+if [ "$KERNELTAG" == "" ]; then
+KERNELTAG="v"`wget -qO-  https://www.kernel.org/finger_banner | grep "The latest stable" | awk '{print $NF}'`
+fi
+
+#--------------------------------------------------------------------------------------------------------------------------------
+# common for legacy allwinner kernel-source
+#--------------------------------------------------------------------------------------------------------------------------------
+# dan and me
+LINUXKERNEL="https://github.com/dan-and/linux-sunxi"
+LINUXSOURCE="linux-sunxi"
+LINUXFAMILY="sunxi"
+LINUXCONFIG="linux-sunxi"
+
+# linux-sunxi
+LINUXKERNEL="https://github.com/linux-sunxi/linux-sunxi --depth 1"
+LINUXSOURCE="linux-sunxi-dev"
+LINUXFAMILY="sun7i"
+LINUXCONFIG="linux-sun7i"
+
+CPUMIN="480000"
+CPUMAX="1010000"
 
 
 #--------------------------------------------------------------------------------------------------------------------------------
@@ -58,23 +77,20 @@ MISC5_DIR="sunxi-display-changer"
 case $BOARD in
 
 
-cubieboard4)
+cubieboard4)#disabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Cubieboards 3.4.x
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.0"
 OFFSET="20"
 BOOTSIZE="16"
-BOOTCONFIG="Merrii_A80_Optimus_defconfig"
-MODULES=""
-MODULES_NEXT=""
+BOOTCONFIG="Bananapi_defconfig" # we don't use it. binnary
 CPUMIN="1200000"
 CPUMAX="1800000"
-#LINUXKERNEL="https://github.com/cubieboard/CC-A80-kernel-source"
-#LINUXSOURCE="linux-sunxi-a80"
-#LINUXCONFIG="linux-sunxi-a80.config"
+LINUXFAMILY="sun9i"
+LINUXKERNEL="https://github.com/cubieboard/CC-A80-kernel-source"
+LINUXSOURCE="linux-sun9i"
+LINUXCONFIG="linux-sun9i"
 ;;
-#--------------------------------------------------------------------------------------------------------------------------------
 
 
 aw-som-a20)#enabled
@@ -83,23 +99,23 @@ aw-som-a20)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # https://aw-som.com/
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.1"
 BOOTCONFIG="Awsom_defconfig" 
-MODULES="hci_uart gpio_sunxi bt_gpio wifi_gpio rfcomm hidp bonding spi_sun7i"
-MODULES_NEXT=""
+MODULES="hci_uart gpio_sunxi rfcomm hidp bonding spi_sun7i"
+MODULES_NEXT="bonding"
 ;;
 
 
 cubieboard)#enabled
 #description A10 single core 1Gb SoC
-#build 2
+#build 3
 #--------------------------------------------------------------------------------------------------------------------------------
 # Cubieboard
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="4.2"
+LINUXFAMILY="sun4i"
+LINUXCONFIG="linux-sun4i"
 BOOTCONFIG="Cubieboard_config" 
-MODULES="hci_uart gpio_sunxi bt_gpio wifi_gpio rfcomm hidp sunxi-ir bonding spi_sun7i"
-MODULES_NEXT=""
+MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sunxi"
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -109,10 +125,9 @@ cubieboard2)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Cubieboard
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="4.2"
 BOOTCONFIG="Cubieboard2_config" 
-MODULES="hci_uart gpio_sunxi bt_gpio wifi_gpio rfcomm hidp sunxi-ir bonding spi_sun7i"
-MODULES_NEXT=""
+MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i"
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -122,10 +137,9 @@ cubietruck)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Cubieboard
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="4.2"
 BOOTCONFIG="Cubietruck_config" 
-MODULES="hci_uart gpio_sunxi bt_gpio wifi_gpio rfcomm hidp sunxi-ir bonding spi_sun7i bcmdhd"
-MODULES_NEXT="brcmfmac rfcomm hidp"
+MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i ap6210"
+MODULES_NEXT="brcmfmac rfcomm hidp bonding"
 ;;
 
 
@@ -144,14 +158,17 @@ MODULES_NEXT=""
 
 lime-a10)#enabled
 #description A10 single core 512Mb SoC
-#build 2
+#build 3
 #--------------------------------------------------------------------------------------------------------------------------------
 # Olimex Lime
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.1"
+LINUXKERNEL="https://github.com/linux-sunxi/linux-sunxi"
+LINUXSOURCE="linux-sunxi-dev"
+LINUXFAMILY="sun4i"
+LINUXCONFIG="linux-sun4i"
 BOOTCONFIG="A10-OLinuXino-Lime_defconfig"
 MODULES="hci_uart gpio_sunxi rfcomm hidp bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -161,10 +178,9 @@ lime)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Olimex Lime
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="2.0"
 BOOTCONFIG="A20-OLinuXino-Lime_defconfig"
 MODULES="hci_uart gpio_sunxi rfcomm hidp bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -174,10 +190,9 @@ lime2)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Olimex Lime 2
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="2.0"
 BOOTCONFIG="A20-OLinuXino-Lime2_defconfig" 
 MODULES="hci_uart gpio_sunxi rfcomm hidp bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -187,10 +202,9 @@ micro)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Olimex Lime mainline kernel	/ experimental
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="2.0"
 BOOTCONFIG="A20-OLinuXino_MICRO_config"
 MODULES="hci_uart gpio_sunxi rfcomm hidp bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -200,10 +214,25 @@ pcduino3nano)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # pcduino3nano
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.1"
 BOOTCONFIG="Linksprite_pcDuino3_Nano_defconfig"
 MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i"
-MODULES_NEXT=""
+MODULES_NEXT="bonding"
+;;
+
+
+bananapim2)#enabled
+#description A31 quad core 1Gb SoC Wifi
+#build 2
+#--------------------------------------------------------------------------------------------------------------------------------
+# Bananapi M2
+#--------------------------------------------------------------------------------------------------------------------------------
+BOOTLOADER="https://github.com/BPI-SINOVOIP/BPI-Mainline-uboot"
+BOOTCONFIG="Bananapi_M2_defconfig"
+BOOTSOURCE="u-boot-bpi-m2"
+BOOTDEFAULT="master"
+UBOOTTAG=""
+MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp"
+MODULES_NEXT="brcmfmac bonding"
 ;;
 
 
@@ -213,11 +242,9 @@ bananapi)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Bananapi
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="3.3"
 BOOTCONFIG="Bananapi_defconfig"
 MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT="brcmfmac"
-LINUXFAMILY="banana"
+MODULES_NEXT="brcmfmac bonding"
 ;;
 
 
@@ -227,11 +254,9 @@ bananapipro)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Bananapi
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="3.3"
 BOOTCONFIG="Bananapro_defconfig"
-MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT="brcmfmac"
-LINUXFAMILY="banana"
+MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp ap6210"
+MODULES_NEXT="brcmfmac bonding"
 ;;
 
 
@@ -241,13 +266,9 @@ lamobo-r1)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Bananapi
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="3.3"
 BOOTCONFIG="Lamobo_R1_defconfig"
-# temporally
-UBOOTTAG="v2015.04"
 MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q"
-MODULES_NEXT="brcmfmac"
-LINUXFAMILY="banana"
+MODULES_NEXT="brcmfmac bonding"
 ;;
 
 
@@ -257,11 +278,9 @@ orangepi)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Bananapi
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.5"
 BOOTCONFIG="Orangepi_defconfig"
 MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
-LINUXFAMILY="banana"
+MODULES_NEXT="bonding"
 ;;
 
 
@@ -271,58 +290,44 @@ orangepimini)#enabled
 #--------------------------------------------------------------------------------------------------------------------------------
 # Bananapi
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.5"
 BOOTCONFIG="Orangepi_mini_defconfig"
 MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
-LINUXFAMILY="banana"
+MODULES_NEXT="bonding"
 ;;
 
 
 orangepiplus)#disabled
 #--------------------------------------------------------------------------------------------------------------------------------
-# Bananapi
+# Orange pi plus
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.2"
-BOOTCONFIG="Orangepi_defconfig"
-MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i 8021q a20_tp"
-MODULES_NEXT=""
-OFFSET="20" # MB (1 x 2048 = default)
-BOOTSIZE="16" # Mb size of boot partition
-;;
-
-
-hummingbird)#disabled
-#--------------------------------------------------------------------------------------------------------------------------------
-# Bananapi
-#--------------------------------------------------------------------------------------------------------------------------------
-REVISION="0.0"
-
-# temporally
-#UBOOTTAG="v2015.04"
-
-BOOTCONFIG="Hummingbird_A31_config"
-MODULES="hci_uart gpio_sunxi rfcomm hidp sunxi-ir bonding spi_sun7i"
-MODULES_NEXT=""
+#OFFSET="20"
+#yBOOTSIZE="16"
+BOOTCONFIG="Bananapi_defconfig"
+LINUXFAMILY="sun8i"
+CPUMIN="1200000"
+CPUMAX="1200000"
+LINUXKERNEL="https://github.com/cubieboard/Cubietruck_Plus-kernel-source"
+LINUXSOURCE="linux-allwinner"
+LINUXCONFIG="linux-sun8i"
 ;;
 
 
 cubox-i)#enabled
-#description Frescale iMx dual/quad core Wifi
+#description Freescale iMx dual/quad core Wifi
 #build 1
 #--------------------------------------------------------------------------------------------------------------------------------
 # cubox-i & hummingboard 3.14.xx
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="3.0"
-BOOTLOADER="https://github.com/SolidRun/u-boot-imx6"
+BOOTLOADER="https://github.com/SolidRun/u-boot-imx6 --depth 1"
 BOOTDEFAULT="HEAD"
+UBOOTTAG=""
 BOOTSOURCE="u-boot-cubox"
 BOOTCONFIG="mx6_cubox-i_config"
 CPUMIN="396000"
 CPUMAX="996000"
 MODULES="bonding"
 MODULES_NEXT="bonding"
-LINUXKERNEL="https://github.com/linux4kix/linux-linaro-stable-mx6"
+LINUXKERNEL="https://github.com/linux4kix/linux-linaro-stable-mx6 --depth 1"
 LINUXFAMILY="cubox"
 LINUXCONFIG="linux-cubox"
 LINUXSOURCE="linux-cubox"
@@ -335,12 +340,11 @@ fi
 
 
 udoo)#enabled
-#description Frescale iMx dual/quad core Wifi
+#description Freescale iMx dual/quad core Wifi
 #build 3
 #--------------------------------------------------------------------------------------------------------------------------------
 # Udoo quad
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="2.0"
 BOOTCONFIG="udoo_quad_config"
 BOOTLOADER="https://github.com/UDOOboard/uboot-imx"
 BOOTSOURCE="u-boot-neo"
@@ -351,21 +355,40 @@ CPUMAX="996000"
 MODULES="bonding"
 MODULES_NEXT=""
 KERNELTAG=""
-LINUXKERNEL="https://github.com/UDOOboard/linux_kernel"
+LINUXKERNEL="https://github.com/UDOOboard/linux_kernel --depth 1"
 LINUXCONFIG="linux-udoo"
-LINUXSOURCE="linux-neo"
+LINUXSOURCE="linux-udoo"
 LINUXDEFAULT="imx_3.14.28_1.0.0_ga_udoo"
 LINUXFAMILY="udoo"
 ;;
 
 
 udoo-neo)#enabled
-#description Frescale iMx singe core Wifi
+#description Freescale iMx singe core Wifi
 #build 0
 #--------------------------------------------------------------------------------------------------------------------------------
-# Udoo quad
+# Udoo Neo
 #--------------------------------------------------------------------------------------------------------------------------------
-REVISION="1.2"
+#BOOTSIZE="32"
+BOOTCONFIG="udoo_neo_config"
+BOOTLOADER="https://github.com/UDOOboard/uboot-imx"
+BOOTSOURCE="u-boot-neo"
+UBOOTTAG=""
+CPUMIN="198000"
+CPUMAX="996000"
+MODULES="bonding"
+MODULES_NEXT=""
+LINUXKERNEL="--depth 1 https://github.com/UDOOboard/linux_kernel -b imx_3.14.28_1.0.0_ga_neo_dev"
+LINUXCONFIG="linux-udoo-neo"
+LINUXSOURCE="linux-neo"
+LINUXFAMILY="neo"
+;;
+
+
+rpi)#disabled
+#--------------------------------------------------------------------------------------------------------------------------------
+# Udoo Neo
+#--------------------------------------------------------------------------------------------------------------------------------
 BOOTSIZE="32"
 BOOTLOADER="https://github.com/UDOOboard/uboot-imx"
 BOOTSOURCE="u-boot-neo"
@@ -374,11 +397,12 @@ CPUMIN="198000"
 CPUMAX="996000"
 MODULES="bonding"
 MODULES_NEXT=""
-LINUXKERNEL="https://github.com/UDOOboard/linux_kernel"
-LINUXCONFIG="linux-udoo-neo"
-LINUXSOURCE="linux-neo"
-LINUXFAMILY="udoo"
+LINUXKERNEL="https://github.com/raspberrypi/linux"
+LINUXCONFIG="linux-rpi.config"
+LINUXSOURCE="linux-rpi"
+LINUXFAMILY="rpi"
 ;;
+
 
 
 *) echo "Board configuration not found"
@@ -399,17 +423,11 @@ if [[ $BRANCH == *next* ]];then
 	LINUXFAMILY="sunxi"
 	FIRMWARE=""
 	if [[ $BOARD == "udoo" ]];then
-	BOOTLOADER="git://git.denx.de/u-boot.git"
-	BOOTSOURCE="u-boot"
 	LINUXKERNEL="https://github.com/patrykk/linux-udoo"
 	LINUXSOURCE="linux-udoo-next"
 	LINUXCONFIG="linux-udoo-next"
-	LINUXDEFAULT="4.0.8"
-	UBOOTTAG="v2015.07"
+	LINUXDEFAULT="4.2"
 	KERNELTAG=""
 	LINUXFAMILY="udoo"
 	fi
 fi
-
-# all boards have same revision
-REVISION="4.3"

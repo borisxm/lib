@@ -39,10 +39,23 @@ if [ "$BOOTSIZE" -ne "0" ]; then
 	display_alert "Creating FAT boot partition" "$BOOTSIZE Mb" "info"
 fi
 # Create image file
-dd if=/dev/zero of=$DEST/cache/tmprootfs.raw bs=1M count=$SDSIZE status=noxfer >/dev/null 2>&1
+while read line;do
+  [[ "$line" =~ "records out" ]] &&
+  echo "$(( ${line%+*}*100/$SDSIZE +1 ))" | dialog --backtitle "$backtitle" --title "Creating blank image ($SDSIZE Mb), please wait ..." --gauge "" 5 70
+done< <( dd if=/dev/zero of=$DEST/cache/tmprootfs.raw bs=1M count=$SDSIZE 2>&1 &
+         pid=$!
+         sleep 1
+         while kill -USR1 $pid 2>/dev/null;do
+           sleep 1
+         done )
 
 # Find first available free device
 LOOP=$(losetup -f)
+
+if [[ "$LOOP" != "/dev/loop0" && "$LOOP" != "/dev/loop1" ]]; then
+display_alert "You run out of loop devices" "pleese reboot" "error"
+exit
+fi
 
 # Mount image as block device
 losetup $LOOP $DEST/cache/tmprootfs.raw
@@ -73,23 +86,35 @@ if [ -f "$DEST/cache/rootfs/$RELEASE.tgz" ]; then
 	diff=$(( (currtime - filemtime) / 86400 ))
 	display_alert "Extracting $RELEASE from cache" "$diff days old" "info"
 	tar xpfz "$DEST/cache/rootfs/$RELEASE.tgz" -C $DEST/cache/sdcard/
+	if [ "$diff" -gt "3" ]; then
+		chroot $DEST/cache/sdcard /bin/bash -c "apt-get update" | dialog --backtitle "$backtitle" --title "Force package update ..." --progressbox 20 70
+	fi
 fi
 
 # If we don't have a filesystem cached, let's make em
 if [ ! -f "$DEST/cache/rootfs/$RELEASE.tgz" ]; then
-display_alert "Debootstrap basic system to image template" "$RELEASE" "info"
 
 # debootstrap base system
-debootstrap --include=openssh-server,debconf-utils --arch=armhf --foreign $RELEASE $DEST/cache/sdcard/ 
+if [[ $RELEASE == "jessie" && $SYSTEMD == "no" ]]; then sysvinit=",sysvinit-core"; fi
+debootstrap --include=openssh-server,debconf-utils$sysvinit --arch=armhf --foreign $RELEASE $DEST/cache/sdcard/ | dialog --backtitle "$backtitle" --title "Debootstrap $DISTRIBUTION $RELEASE base system to image template ..." --progressbox 20 70
+
+# remove systemd default load. It's installed and can be used with kernel parameter
+if [[ $RELEASE == "jessie" && $SYSTEMD == "no" ]]; then
+sed -i -e 's/systemd-sysv //g' $DEST/cache/sdcard/debootstrap/required
+fi
 
 # we need emulator for second stage
 cp /usr/bin/qemu-arm-static $DEST/cache/sdcard/usr/bin/
+
+# and keys
+d=$DEST/cache/sdcard/usr/share/keyrings/
+test -d "$d" || mkdir -p "$d" && cp /usr/share/keyrings/debian-archive-keyring.gpg "$d" 
 
 # enable arm binary format so that the cross-architecture chroot environment will work
 test -e /proc/sys/fs/binfmt_misc/qemu-arm || update-binfmts --enable qemu-arm
 
 # debootstrap second stage
-chroot $DEST/cache/sdcard /bin/bash -c "/debootstrap/debootstrap --second-stage"
+chroot $DEST/cache/sdcard /bin/bash -c "/debootstrap/debootstrap --second-stage" | dialog --backtitle "$backtitle" --title "Installing $DISTRIBUTION $RELEASE base system to image template ..." --progressbox 20 70
 
 # mount proc, sys and dev
 mount -t proc chproc $DEST/cache/sdcard/proc
@@ -107,14 +132,15 @@ chroot $DEST/cache/sdcard /bin/bash -c "cat armbian.key | apt-key add -"
 rm $DEST/cache/sdcard/armbian.key
 
 # update and upgrade
-LC_ALL=C LANGUAGE=C LANG=C chroot $DEST/cache/sdcard /bin/bash -c "apt-get -y update"
+LC_ALL=C LANGUAGE=C LANG=C chroot $DEST/cache/sdcard /bin/bash -c "apt-get -y update" | dialog --progressbox "Updating package databases ..." 20 70
 
 # install aditional packages
 PAKETKI="alsa-utils automake btrfs-tools bash-completion bc bridge-utils bluez build-essential cmake cpufrequtils curl \
 device-tree-compiler dosfstools evtest figlet fbset fping git haveged hddtemp hdparm hostapd htop i2c-tools ifenslave-2.6 \
 iperf ir-keytable iotop iozone3 iw less libbluetooth-dev libbluetooth3 libtool libwrap0-dev libfuse2 libssl-dev lirc lsof makedev \
-module-init-tools mtp-tools nano ntfs-3g ntp parted pkg-config pciutils pv python-smbus rfkill rsync screen stress sudo \
-sysfsutils toilet u-boot-tools unattended-upgrades unzip usbutils vlan wireless-tools weather-util weather-util-data wget wpasupplicant iptables"
+module-init-tools mtp-tools nano ntfs-3g ntp parted pkg-config pciutils pv python-smbus rfkill rsync screen stress sudo subversion \
+sysfsutils toilet u-boot-tools unattended-upgrades unzip usbutils vlan wireless-tools weather-util weather-util-data wget \
+wpasupplicant iptables dvb-apps libdigest-sha-perl libproc-processtable-perl w-scan apt-transport-https sysbench"
 
 # generate locales and install packets
 display_alert "Install locales" "$DEST_LANG" "info"
@@ -124,13 +150,11 @@ LC_ALL=C LANGUAGE=C LANG=C chroot $DEST/cache/sdcard /bin/bash -c "locale-gen $D
 LC_ALL=C LANGUAGE=C LANG=C chroot $DEST/cache/sdcard /bin/bash -c "export CHARMAP=$CONSOLE_CHAR FONTFACE=8x16 LANG=$DEST_LANG LANGUAGE=$DEST_LANG DEBIAN_FRONTEND=noninteractive"
 LC_ALL=C LANGUAGE=C LANG=C chroot $DEST/cache/sdcard /bin/bash -c "update-locale LANG=$DEST_LANG LANGUAGE=$DEST_LANG LC_MESSAGES=POSIX"
 
-chroot $DEST/cache/sdcard /bin/bash -c "debconf-apt-progress -- apt-get -y install $PAKETKI"
 
-display_alert "Install console data" "" "info"
+install_packet "$PAKETKI" "Installing Armbian on the top of $DISTRIBUTION $RELEASE base system ..."
 
-# install console setup separate
-LC_ALL=C LANGUAGE=C LANG=C chroot $DEST/cache/sdcard /bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get -y install \
-console-setup console-data kbd console-common unicode-data"
+install_packet "console-setup console-data kbd console-common unicode-data" "Installing console packages"
+
 
 # configure the system for unattended upgrades
 cp $SRC/lib/scripts/50unattended-upgrades $DEST/cache/sdcard/etc/apt/apt.conf.d/50unattended-upgrades
