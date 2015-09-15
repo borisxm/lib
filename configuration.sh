@@ -129,6 +129,19 @@ MODULES_NEXT="brcmfmac rfcomm hidp"
 ;;
 
 
+itead-cevb-aw2041)#enabled
+#description A20 dual core 1Gb SoC
+#build 3
+#--------------------------------------------------------------------------------------------------------------------------------
+# Itead studio Core EVB with AW2401 card
+#--------------------------------------------------------------------------------------------------------------------------------
+REVISION="1.1"
+BOOTCONFIG="itead-cevb-aw2041_config"
+MODULES="hci_uart gpio_sunxi bt_gpio wifi_gpio rfcomm hidp sunxi-ir bonding spi_sun7i"
+MODULES_NEXT=""
+;;
+
+
 lime-a10)#enabled
 #description A10 single core 512Mb SoC
 #build 2

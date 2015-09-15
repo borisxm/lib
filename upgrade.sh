@@ -138,7 +138,7 @@ select_boards ()
 {
 backtitle="Armbian upgrade"
 if [ "$BOARD" == "" ]; then
-	BOARDS="AW-som-a20 A20 Cubieboard A10 Cubieboard2 A20 Cubietruck A20 Lime-A10 A10 Lime A20 Lime2 A20 Micro A20 Bananapi A20 \
+	BOARDS="AW-som-a20 A20 Cubieboard A10 Cubieboard2 A20 Cubietruck A20 CEVB-AW2041 A20 Lime-A10 A10 Lime A20 Lime2 A20 Micro A20 Bananapi A20 \
     Lamobo-R1 A20 Orangepi A20 Pcduino3nano A20 Cubox-i imx6 Udoo imx6";
 	MYLIST=`for x in $BOARDS; do echo $x ""; done`
 	whiptail --title "Choose a board" --backtitle "$backtitle" --menu "\nWhich one?" 24 30 16 $MYLIST 2>results    
